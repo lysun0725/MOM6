@@ -132,7 +132,7 @@ use MOM_offline_main,          only : offline_redistribute_residual, offline_dia
 use MOM_offline_main,          only : offline_fw_fluxes_into_ocean, offline_fw_fluxes_out_ocean
 use MOM_offline_main,          only : offline_advection_layer, offline_transport_end
 use MOM_ALE,                   only : ale_offline_tracer_final, ALE_main_offline
-use MOM_particles_mod,         only : particles, particles_init, particles_run
+use MOM_particles_mod,         only : particles, particles_init, particles_run, particles_save_restart
 
 implicit none ; private
 
@@ -3106,6 +3106,10 @@ end subroutine get_ocean_stocks
 !> End of ocean model, including memory deallocation
 subroutine MOM_end(CS)
   type(MOM_control_struct), pointer :: CS   !< MOM control structure
+
+  if (CS%use_particles) then
+    call particles_save_restart(CS%particles)
+  endif
 
   if (CS%use_ALE_algorithm) call ALE_end(CS%ALE_CSp)
 
