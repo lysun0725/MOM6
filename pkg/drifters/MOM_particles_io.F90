@@ -128,6 +128,7 @@ logical :: check_bond_quality
 type(particles_gridded), pointer :: grd
 real, allocatable, dimension(:) :: lon,          &
                                    lat,          &
+                                   depth,        &
                                    uvel,         &
                                    vvel,         &
 !                                   axn,          &
@@ -177,6 +178,7 @@ integer :: grdi, grdj
 
    allocate(lon(nparts))
    allocate(lat(nparts))
+   allocate(depth(nparts))
    allocate(uvel(nparts))
    allocate(vvel(nparts))
  !  allocate(axn(nparts))    !Alon
@@ -191,6 +193,7 @@ integer :: grdi, grdj
    allocate(ine(nparts))
    allocate(jne(nparts))
 !   allocate(start_year(nparts))
+   allocate(drifter_num(nparts))
    allocate(id_cnt(nparts))
    allocate(id_ij(nparts))
 
@@ -207,6 +210,7 @@ integer :: grdi, grdj
   ! Define Variables
   id = register_restart_field(parts_restart,filename,'lon',lon,longname='longitude',units='degrees_E')
   id = register_restart_field(parts_restart,filename,'lat',lat,longname='latitude',units='degrees_N')
+  id = register_restart_field(parts_restart,filename,'depth',depth,longname='depth below surface',units='m')
   id = register_restart_field(parts_restart,filename,'uvel',uvel,longname='zonal velocity',units='m/s')
   id = register_restart_field(parts_restart,filename,'vvel',vvel,longname='meridional velocity',units='m/s')
 !  if (.not. parts%Runge_not_Verlet) then
@@ -223,6 +227,8 @@ integer :: grdi, grdj
                                             longname='latitude of starting location',units='degrees_N')
 !  id = register_restart_field(parts_restart,filename,'start_year',start_year, &
 !                                            longname='calendar year of calving event', units='years')
+  id = register_restart_field(parts_restart,filename,'drifter_num',drifter_num, &
+                                            longname='identification of the drifter', units='dimensionless')
   id = register_restart_field(parts_restart,filename,'id_cnt',id_cnt, &
                                             longname='counter component of particle id', units='dimensionless')
   id = register_restart_field(parts_restart,filename,'id_ij',id_ij, &
@@ -237,14 +243,14 @@ integer :: grdi, grdj
     this=>parts%list(grdi,grdj)%first
     do while(associated(this))
       i = i + 1
-      lon(i) = this%lon; lat(i) = this%lat
+      lon(i) = this%lon; lat(i) = this%lat; depth(i) = this%depth
       uvel(i) = this%uvel; vvel(i) = this%vvel
       ine(i) = this%ine; jne(i) = this%jne
 !      axn(i) = this%axn; ayn(i) = this%ayn !Added by Alon
 !      bxn(i) = this%bxn; byn(i) = this%byn !Added by Alon
       start_lon(i) = this%start_lon; start_lat(i) = this%start_lat
 !      start_year(i) = this%start_year; start_day(i) = this%start_day
-      id_cnt(i) = this%id !; id_ij(i) = this%id
+      id_cnt(i) = this%id; drifter_num(i) = this%drifter_num !; id_ij(i) = this%id
       call split_id(this%id, id_cnt(i), id_ij(i))
       this=>this%next
     enddo
@@ -257,6 +263,7 @@ integer :: grdi, grdj
   deallocate(              &
              lon,          &
              lat,          &
+             depth,        &
              uvel,         &
              vvel,         &
 !             axn,          &
@@ -271,6 +278,7 @@ integer :: grdi, grdj
   deallocate(           &
              ine,       &
              jne,       &
+             drifter_num,       &
              id_cnt,    &
              id_ij) !,     &
 !             start_year )
@@ -312,6 +320,7 @@ integer :: stderrunit, i, j, cnt, ij
 real, allocatable,dimension(:) :: lon,	&
                                   lat,	&
                                   depth,  &
+                                  drifter_num,  &
                                   id
 integer, allocatable, dimension(:) :: id_cnt, &
                                       id_ij
@@ -329,6 +338,7 @@ integer, allocatable, dimension(:) :: id_cnt, &
   allocate(grd%uo(grd%isd:grd%ied,grd%jsd:grd%jed))
   allocate(grd%vo(grd%isd:grd%ied,grd%jsd:grd%jed))
 
+  !LUYU: uo and vo are intialized in terms of CGRID; will convert this to BGRID in particles_run
   do j=grd%jsd,grd%jed
     do i=grd%isd,grd%ied
        grd%uo(i,j) = u(i,j,1)
@@ -359,6 +369,7 @@ integer, allocatable, dimension(:) :: id_cnt, &
     allocate(depth(nparts_in_file))
     if (replace_drifter_num) then
       allocate(id(nparts_in_file))
+      allocate(drifter_num(nparts_in_file))
     else
       allocate(id_cnt(nparts_in_file))
       allocate(id_ij(nparts_in_file))
@@ -369,6 +380,7 @@ integer, allocatable, dimension(:) :: id_cnt, &
     call read_unlimited_axis(filename,'depth',depth,domain=grd%domain)
     if (replace_drifter_num) then
       call read_unlimited_axis(filename,'drifter_num',id,domain=grd%domain)
+      call read_unlimited_axis(filename,'drifter_num',drifter_num,domain=grd%domain)
     else
       call read_int_vector(filename, 'id_cnt', id_cnt, grd%domain)
       call read_int_vector(filename, 'id_ij', id_ij, grd%domain)
@@ -384,6 +396,9 @@ integer, allocatable, dimension(:) :: id_cnt, &
   do k=1, nparts_in_file
     localpart%lon=lon(k)
     localpart%lat=lat(k)
+    localpart%start_lon=lon(k)
+    localpart%start_lat=lat(k)
+    localpart%depth=depth(k)
 
     if (use_slow_find) then
       lres=find_cell(grd, localpart%lon, localpart%lat, localpart%ine, localpart%jne)
@@ -400,6 +415,7 @@ integer, allocatable, dimension(:) :: id_cnt, &
     if (lres) then ! True if the particle resides on the current processors computational grid
       if (replace_drifter_num) then
         localpart%id = generate_id(grd, localpart%ine, localpart%jne)
+        localpart%drifter_num = drifter_num(k)
       else
         localpart%id = id_from_2_ints(id_cnt(k), id_ij(k))
       endif
@@ -415,6 +431,7 @@ integer, allocatable, dimension(:) :: id_cnt, &
                depth)
     if (replace_drifter_num) then
       deallocate(id)
+      deallocate(drifter_num)
     else
       deallocate(id_cnt)
       deallocate(id_ij)

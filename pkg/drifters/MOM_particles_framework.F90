@@ -147,14 +147,14 @@ end type xyt
 type :: particle
   type(particle), pointer :: prev=>null(), next=>null()
   ! State variables (specific to the particle, needed for restarts)
-  real :: lon, lat, uvel, vvel !< position (degrees) and zonal and meridional velocities (m/s)
+  real :: lon, lat, depth, uvel, vvel !< position (degrees) and zonal and meridional velocities (m/s)
   real :: lon_old, lat_old, uvel_old, vvel_old  !< previous position (degrees) and zonal
                                                 !< and meridional velocities (m/s)
   real :: axn, ayn, bxn, byn                    !< explicit and implicit accelerations (currently disabled)
   real :: start_lon, start_lat, start_day       !< origination position (degrees) and day
   integer :: start_year                         !< origination year
   real :: halo_part  !< equal to zero for particles on the computational domain, and 1 for particles on the halo
-  integer(kind=8) :: id                         !< particle identifier
+  integer(kind=8) :: id,drifter_num             !< particle identifier
   integer :: ine, jne                           !< nearest index in NE direction (for convenience)
   real :: xi, yj                                !< non-dimensional coords within current cell (0..1)
   real :: uo, vo                                !< zonal and meridional ocean velocities experienced
@@ -356,7 +356,8 @@ subroutine particles_framework_init(parts, Grid, Time, dt)
   allocate( grd%particle_counter_grd(grd%isd:grd%ied, grd%jsd:grd%jed) ); grd%particle_counter_grd(:,:)=0
 
 
-  is=grd%isc; ie=grd%iec; js=grd%jsc; je=grd%jec
+  !is=grd%isc; ie=grd%iec; js=grd%jsc; je=grd%jec
+  is=grd%isd; ie=grd%ied; js=grd%jsd; je=grd%jed
   grd%lon(is:ie,js:je)=Grid%geolonBu(is:ie,js:je)
   grd%lat(is:ie,js:je)=Grid%geolatBu(is:ie,js:je)
   grd%area(is:ie,js:je)=Grid%areaT(is:ie,js:je) !sis2 has *(4.*pi*radius*radius)
