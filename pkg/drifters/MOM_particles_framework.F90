@@ -14,7 +14,7 @@ use mpp_mod, only: COMM_TAG_9, COMM_TAG_10
 use mpp_mod, only: mpp_clock_begin, mpp_clock_end, mpp_clock_id, input_nml_file
 use mpp_mod, only: CLOCK_COMPONENT, CLOCK_SUBCOMPONENT, CLOCK_LOOP
 use mpp_domains_mod, only: domain2D
-use mpp_parameter_mod, only: SCALAR_PAIR, CGRID_NE, BGRID_NE, CORNER, AGRID
+use mpp_parameter_mod, only: SCALAR_PAIR, CGRID_NE, BGRID_NE, CORNER, AGRID,CENTER
 use mpp_domains_mod, only: mpp_update_domains, mpp_define_domains
 use mpp_domains_mod, only: mpp_get_compute_domain, mpp_get_data_domain, mpp_get_global_domain
 use mpp_domains_mod, only: CYCLIC_GLOBAL_DOMAIN, FOLD_NORTH_EDGE
@@ -360,22 +360,22 @@ subroutine particles_framework_init(parts, Grid, Time, dt)
   !is=grd%isd; ie=grd%ied; js=grd%jsd; je=grd%jed
   grd%lon(is:ie,js:je)=Grid%geolonBu(is:ie,js:je)
   grd%lat(is:ie,js:je)=Grid%geolatBu(is:ie,js:je)
-  grd%area(is:ie,js:je)=Grid%areaT(is:ie,js:je) !sis2 has *(4.*pi*radius*radius)
+  grd%area(is:ie,js:je)=Grid%areaBu(is:ie,js:je) !sis2 has *(4.*pi*radius*radius)
   grd%ocean_depth(is:ie,js:je) = Grid%bathyT(is:ie,js:je)
   is=grd%isc; ie=grd%iec; js=grd%jsc; je=grd%jec
-  grd%dx(is:ie,js:je)=Grid%dxT(is:ie,js:je)
-  grd%dy(is:ie,js:je)=Grid%dyT(is:ie,js:je)
-  grd%msk(is:ie,js:je)=Grid%mask2dT(is:ie,js:je)
+  grd%dx(is:ie,js:je)=Grid%dxBu(is:ie,js:je)
+  grd%dy(is:ie,js:je)=Grid%dyBu(is:ie,js:je)
+  grd%msk(is:ie,js:je)=Grid%mask2dBu(is:ie,js:je)
   grd%cos(is:ie,js:je)=Grid%cos_rot(is:ie,js:je)
   grd%sin(is:ie,js:je)=Grid%sin_rot(is:ie,js:je)
 
-  call mpp_update_domains(grd%lon, grd%domain, position=CORNER)
-  call mpp_update_domains(grd%lat, grd%domain, position=CORNER)
-  call mpp_update_domains(grd%dy, grd%dx, grd%domain, gridtype=CGRID_NE, flags=SCALAR_PAIR)
+  call mpp_update_domains(grd%lon, grd%domain)
+  call mpp_update_domains(grd%lat, grd%domain)
+  call mpp_update_domains(grd%dy, grd%dx, grd%domain, gridtype=BGRID_NE, flags=SCALAR_PAIR)
   call mpp_update_domains(grd%area, grd%domain)
   call mpp_update_domains(grd%msk, grd%domain)
-  call mpp_update_domains(grd%cos, grd%domain, position=CORNER)
-  call mpp_update_domains(grd%sin, grd%domain, position=CORNER)
+  call mpp_update_domains(grd%cos, grd%domain, position=CENTER)
+  call mpp_update_domains(grd%sin, grd%domain, position=CENTER)
   call mpp_update_domains(grd%ocean_depth, grd%domain)
   call mpp_update_domains(grd%parity_x, grd%parity_y, grd%domain, gridtype=AGRID) ! If either parity_x/y is -ve, we need rotation of vectors
 
