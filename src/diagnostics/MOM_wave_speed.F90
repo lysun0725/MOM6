@@ -19,6 +19,11 @@ implicit none ; private
 
 public wave_speed, wave_speeds, wave_speed_init, wave_speed_set_param
 
+! A note on unit descriptions in comments: MOM6 uses units that can be rescaled for dimensional
+! consistency testing. These are noted in comments with units like Z, H, L, and T, along with
+! their mks counterparts with notation like "a velocity [Z T-1 ~> m s-1]".  If the units
+! vary with the Boussinesq approximation, the Boussinesq variant is given first.
+
 !> Control structure for MOM_wave_speed
 type, public :: wave_speed_CS ; private
   logical :: use_ebt_mode = .false.    !< If true, calculate the equivalent barotropic wave speed instead
@@ -30,7 +35,7 @@ type, public :: wave_speed_CS ; private
                                        !! wave speed. This parameter controls the default behavior of
                                        !! wave_speed() which can be overridden by optional arguments.
   real :: mono_N2_depth = -1.          !< The depth below which N2 is limited as monotonic for the purposes of
-                                       !! calculating the equivalent barotropic wave speed. (Z)
+                                       !! calculating the equivalent barotropic wave speed [Z ~> m].
                                        !! This parameter controls the default behavior of wave_speed() which
                                        !! can be overridden by optional arguments.
   type(remapping_CS) :: remapping_CS   !< Used for vertical remapping when calculating equivalent barotropic
@@ -47,9 +52,9 @@ subroutine wave_speed(h, tv, G, GV, US, cg1, CS, full_halos, use_ebt_mode, &
   type(verticalGrid_type),          intent(in)  :: GV !< Vertical grid structure
   type(unit_scale_type),            intent(in)  :: US !< A dimensional unit scaling type
   real, dimension(SZI_(G),SZJ_(G),SZK_(G)), &
-                                    intent(in)  :: h  !< Layer thickness in units of H (m or kg/m2)
+                                    intent(in)  :: h  !< Layer thickness [H ~> m or kg m-2]
   type(thermo_var_ptrs),            intent(in)  :: tv !< Thermodynamic variables
-  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: cg1 !< First mode internal wave speed (m/s)
+  real, dimension(SZI_(G),SZJ_(G)), intent(out) :: cg1 !< First mode internal wave speed [m s-1]
   type(wave_speed_CS),              pointer     :: CS !< Control structure for MOM_wave_speed
   logical, optional,                intent(in)  :: full_halos !< If true, do the calculation
                                           !! over the entire computational domain.
@@ -60,19 +65,18 @@ subroutine wave_speed(h, tv, G, GV, US, cg1, CS, full_halos, use_ebt_mode, &
                                           !! for the purposes of calculating vertical modal structure.
   real, optional,                   intent(in)  :: mono_N2_depth !< A depth below which N2 is limited as
                                           !! monotonic for the purposes of calculating vertical
-                                          !! modal structure, in m.
+                                          !! modal structure [m].
   real, dimension(SZI_(G),SZJ_(G),SZK_(G)), &
-        optional,                   intent(out) :: modal_structure !< Normalized model structure (non-dim)
+        optional,                   intent(out) :: modal_structure !< Normalized model structure [nondim]
 
   ! Local variables
   real, dimension(SZK_(G)+1) :: &
     dRho_dT, dRho_dS, &
     pres, T_int, S_int, &
-    gprime        ! The reduced gravity across each interface, in m2 Z-1 s-2.
+    gprime        ! The reduced gravity across each interface [m2 Z-1 s-2 ~> m s-2].
   real, dimension(SZK_(G)) :: &
     Igl, Igu      ! The inverse of the reduced gravity across an interface times
-                  ! the thickness of the layer below (Igl) or above (Igu) it,
-                  ! in units of s2 m-2.
+                  ! the thickness of the layer below (Igl) or above (Igu) it [s2 m-2].
   real, dimension(SZK_(G),SZI_(G)) :: &
     Hf, Tf, Sf, Rf
   real, dimension(SZK_(G)) :: &
@@ -80,16 +84,16 @@ subroutine wave_speed(h, tv, G, GV, US, cg1, CS, full_halos, use_ebt_mode, &
   real det, ddet, detKm1, detKm2, ddetKm1, ddetKm2
   real :: lam, dlam, lam0
   real :: min_h_frac
-  real :: Z_to_Pa  ! A conversion factor from thickesses (in Z) to pressure (in Pa)
+  real :: Z_to_Pa  ! A conversion factor from thicknesses (in Z) to pressure (in Pa)
   real, dimension(SZI_(G)) :: &
-    htot, hmin, &  ! Thicknesses in Z.
+    htot, hmin, &  ! Thicknesses [Z ~> m].
     H_here, HxT_here, HxS_here, HxR_here
   real :: speed2_tot
   real :: I_Hnew, drxh_sum
-  real :: L2_to_Z2 ! A scaling factor squared from units of lateral distances to depths, in Z2 m-2.
+  real :: L2_to_Z2 ! A scaling factor squared from units of lateral distances to depths [Z2 m-2 ~> 1].
   real, parameter :: tol1  = 0.0001, tol2 = 0.001
   real, pointer, dimension(:,:,:) :: T => NULL(), S => NULL()
-  real :: g_Rho0  ! G_Earth/Rho0 in m4 s-2 kg-1.
+  real :: g_Rho0  ! G_Earth/Rho0 [m5 Z-1 s-2 kg-1 ~> m4 s-2 kg-1].
   real :: rescale, I_rescale
   integer :: kf(SZI_(G))
   integer, parameter :: max_itt = 10
@@ -128,8 +132,8 @@ subroutine wave_speed(h, tv, G, GV, US, cg1, CS, full_halos, use_ebt_mode, &
   endif
 
   S => tv%S ; T => tv%T
-  g_Rho0 = GV%g_Earth / GV%Rho0
-  Z_to_Pa = GV%g_Earth * GV%Rho0
+  g_Rho0 = US%L_T_to_m_s**2 * GV%g_Earth / GV%Rho0
+  Z_to_Pa = GV%Z_to_H * GV%H_to_Pa
   use_EOS = associated(tv%eqn_of_state)
 
   rescale = 1024.0**4 ; I_rescale = 1.0/rescale
@@ -451,7 +455,7 @@ subroutine wave_speed(h, tv, G, GV, US, cg1, CS, full_halos, use_ebt_mode, &
               mode_struct(1:kc)=0.
             endif
             ! Note that remapping_core_h requires that the same units be used
-            ! for both the source and target grid thicknesses, here in H.
+            ! for both the source and target grid thicknesses, here [H ~> m or kg m-2].
             call remapping_core_h(CS%remapping_CS, kc, GV%Z_to_H*Hc(:), mode_struct, &
                                   nz, h(i,j,:), modal_structure(i,j,:), 1.0e-30*GV%m_to_H, 1.0e-10*GV%m_to_H)
           endif
@@ -515,10 +519,10 @@ subroutine wave_speeds(h, tv, G, GV, US, nmodes, cn, CS, full_halos)
   type(ocean_grid_type),                    intent(in)  :: G !< Ocean grid structure
   type(verticalGrid_type),                  intent(in)  :: GV !< Vertical grid structure
   type(unit_scale_type),                    intent(in)  :: US !< A dimensional unit scaling type
-  real, dimension(SZI_(G),SZJ_(G),SZK_(G)), intent(in)  :: h !< Layer thickness (m or kg/m2)
+  real, dimension(SZI_(G),SZJ_(G),SZK_(G)), intent(in)  :: h !< Layer thickness [H ~> m or kg m-2]
   type(thermo_var_ptrs),                    intent(in)  :: tv !< Thermodynamic variables
   integer,                                  intent(in)  :: nmodes !< Number of modes
-  real, dimension(G%isd:G%ied,G%jsd:G%jed,nmodes), intent(out) :: cn !< Waves speeds (m/s)
+  real, dimension(G%isd:G%ied,G%jsd:G%jed,nmodes), intent(out) :: cn !< Waves speeds [L T-1 ~> m s-1]
   type(wave_speed_CS), optional,            pointer     :: CS !< Control structure for MOM_wave_speed
   logical,             optional,            intent(in)  :: full_halos !< If true, do the calculation
                                                                       !! over the entire computational domain.
@@ -526,11 +530,10 @@ subroutine wave_speeds(h, tv, G, GV, US, nmodes, cn, CS, full_halos)
   real, dimension(SZK_(G)+1) :: &
     dRho_dT, dRho_dS, &
     pres, T_int, S_int, &
-    gprime        ! The reduced gravity across each interface, in m s-2.
+    gprime        ! The reduced gravity across each interface [m s-2]
   real, dimension(SZK_(G)) :: &
     Igl, Igu      ! The inverse of the reduced gravity across an interface times
-                  ! the thickness of the layer below (Igl) or above (Igu) it,
-                  ! in units of s2 m-2.
+                  ! the thickness of the layer below (Igl) or above (Igu) it [s2 m-2].
   real, dimension(SZK_(G)-1) :: &
     a_diag, b_diag, c_diag
                   ! diagonals of tridiagonal matrix; one value for each
@@ -559,22 +562,23 @@ subroutine wave_speeds(h, tv, G, GV, US, nmodes, cn, CS, full_halos)
   integer :: numint       ! number of widows (intervals) in root searching range
   integer :: nrootsfound  ! number of extra roots found (not including 1st root)
   real :: min_h_frac
-  real :: Z_to_Pa  ! A conversion factor from thickesses (in Z) to pressure (in Pa)
+  real :: Z_to_Pa  ! A conversion factor from thicknesses (in Z) to pressure (in Pa)
   real, dimension(SZI_(G)) :: &
-    htot, hmin, &    ! Thicknesses in Z.
+    htot, hmin, &    ! Thicknesses [Z ~> m].
     H_here, HxT_here, HxS_here, HxR_here
-  real :: speed2_tot ! overestimate of the mode-1 speed squared, m2 s-2
+  real :: speed2_tot ! overestimate of the mode-1 speed squared [m2 s-2]
   real :: speed2_min ! minimum mode speed (squared) to consider in root searching
   real, parameter :: reduct_factor = 0.5
                      ! factor used in setting speed2_min
   real :: I_Hnew, drxh_sum
   real, parameter :: tol1  = 0.0001, tol2 = 0.001
   real, pointer, dimension(:,:,:) :: T => NULL(), S => NULL()
-  real :: g_Rho0  ! G_Earth/Rho0 in m4 s-2 kg-1.
+  real :: g_Rho0  ! G_Earth/Rho0 [m5 Z-1 s-2 kg-1 ~> m4 s-2 kg-1].
   integer :: kf(SZI_(G))
   integer, parameter :: max_itt = 10
   logical :: use_EOS    ! If true, density is calculated from T & S using the equation of state.
-  real, dimension(SZK_(G)+1) :: z_int, N2
+  real, dimension(SZK_(G)+1) :: z_int
+  ! real, dimension(SZK_(G)+1) :: N2
   integer :: nsub       ! number of subintervals used for root finding
   integer, parameter :: sub_it_max = 4
                         ! maximum number of times to subdivide interval
@@ -596,9 +600,9 @@ subroutine wave_speeds(h, tv, G, GV, US, nmodes, cn, CS, full_halos)
   endif ; endif
 
   S => tv%S ; T => tv%T
-  g_Rho0 = GV%g_Earth / GV%Rho0
+  g_Rho0 = US%L_T_to_m_s**2 * GV%g_Earth / GV%Rho0
   use_EOS = associated(tv%eqn_of_state)
-  Z_to_Pa = GV%g_Earth * GV%Rho0
+  Z_to_Pa = GV%Z_to_H * GV%H_to_Pa
 
   min_h_frac = tol1 / real(nz)
   !$OMP parallel do default(private) shared(is,ie,js,je,nz,h,G,GV,US,min_h_frac,use_EOS,T,S, &
@@ -775,12 +779,12 @@ subroutine wave_speeds(h, tv, G, GV, US, nmodes, cn, CS, full_halos)
             do K=2,kc
               Igl(K) = 1.0/(gprime(K)*Hc(k)) ; Igu(K) = 1.0/(gprime(K)*Hc(k-1))
               z_int(K) = z_int(K-1) + Hc(k-1)
-              N2(K) = US%m_to_Z**2*gprime(K)/(0.5*(Hc(k)+Hc(k-1)))
+              ! N2(K) = US%m_to_Z**2*gprime(K)/(0.5*(Hc(k)+Hc(k-1)))
               speed2_tot = speed2_tot + gprime(K)*(Hc(k-1)+Hc(k))
             enddo
             ! Set stratification for surface and bottom (setting equal to nearest interface for now)
-            N2(1) = N2(2) ; N2(kc+1) = N2(kc)
-            ! Calcualte depth at bottom
+            ! N2(1) = N2(2) ; N2(kc+1) = N2(kc)
+            ! Calculate depth at bottom
             z_int(kc+1) = z_int(kc)+Hc(kc)
             ! check that thicknesses sum to total depth
             if (abs(z_int(kc+1)-htot(i)) > 1.e-12*htot(i)) then
@@ -937,6 +941,7 @@ subroutine wave_speeds(h, tv, G, GV, US, nmodes, cn, CS, full_halos)
             else
               cn(i,j,2:nmodes) = 0.0 ! else too small to worry about
             endif ! if nmodes>1 .and. kc>nmodes .and. c1>c1_thresh
+            do m=1,nmodes ; cn(i,j,m) = US%m_s_to_L_T*cn(i,j,m) ; enddo
           else
             cn(i,j,:) = 0.0
           endif ! if more than 2 layers

@@ -31,16 +31,21 @@ public dumbbell_initialize_thickness
 public dumbbell_initialize_temperature_salinity
 public dumbbell_initialize_sponges
 
+! A note on unit descriptions in comments: MOM6 uses units that can be rescaled for dimensional
+! consistency testing. These are noted in comments with units like Z, H, L, and T, along with
+! their mks counterparts with notation like "a velocity [Z T-1 ~> m s-1]".  If the units
+! vary with the Boussinesq approximation, the Boussinesq variant is given first.
+
 contains
 
 !> Initialization of topography.
-subroutine dumbbell_initialize_topography ( D, G, param_file, max_depth )
-  ! Arguments
-  type(dyn_horgrid_type),             intent(in)  :: G !< The dynamic horizontal grid type
+subroutine dumbbell_initialize_topography( D, G, param_file, max_depth )
+  type(dyn_horgrid_type),  intent(in)  :: G !< The dynamic horizontal grid type
   real, dimension(G%isd:G%ied,G%jsd:G%jed), &
-                                      intent(out) :: D !< Ocean bottom depth in m
-  type(param_file_type),              intent(in)  :: param_file !< Parameter file structure
-  real,                               intent(in)  :: max_depth  !< Maximum depth of model in m
+                           intent(out) :: D !< Ocean bottom depth in the units of depth_max
+  type(param_file_type),   intent(in)  :: param_file !< Parameter file structure
+  real,                    intent(in)  :: max_depth !< Maximum ocean depth in arbitrary units
+
   ! Local variables
   integer   :: i, j
   real      :: x, y, delta, dblen, dbfrac
@@ -56,17 +61,15 @@ subroutine dumbbell_initialize_topography ( D, G, param_file, max_depth )
     dblen=dblen*1.e3
   endif
 
-  do i=G%isc,G%iec
-    do j=G%jsc,G%jec
-      ! Compute normalized zonal coordinates (x,y=0 at center of domain)
-      x = ( G%geoLonT(i,j) ) / dblen
-      y = ( G%geoLatT(i,j)  ) / G%len_lat
-      D(i,j) = G%max_depth
-      if ((x>=-0.25 .and. x<=0.25) .and. (y <= -0.5*dbfrac .or. y >= 0.5*dbfrac)) then
-        D(i,j) = 0.0
-      endif
-    enddo
-  enddo
+  do j=G%jsc,G%jec ; do i=G%isc,G%iec
+    ! Compute normalized zonal coordinates (x,y=0 at center of domain)
+    x = ( G%geoLonT(i,j) ) / dblen
+    y = ( G%geoLatT(i,j)  ) / G%len_lat
+    D(i,j) = G%max_depth
+    if ((x>=-0.25 .and. x<=0.25) .and. (y <= -0.5*dbfrac .or. y >= 0.5*dbfrac)) then
+      D(i,j) = 0.0
+    endif
+  enddo ; enddo
 
 end subroutine dumbbell_initialize_topography
 
@@ -76,19 +79,19 @@ subroutine dumbbell_initialize_thickness ( h, G, GV, US, param_file, just_read_p
   type(verticalGrid_type), intent(in)  :: GV          !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in)  :: US          !< A dimensional unit scaling type
   real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
-                           intent(out) :: h           !< The thickness that is being initialized, in m.
+                           intent(out) :: h           !< The thickness that is being initialized [H ~> m or kg m-2].
   type(param_file_type),   intent(in)  :: param_file  !< A structure indicating the open file
                                                       !! to parse for model parameter values.
   logical,       optional, intent(in)  :: just_read_params !< If present and true, this call will
                                                       !! only read parameters without changing h.
 
-  real :: e0(SZK_(G)+1)   ! The resting interface heights, in depth units (Z), usually
+  real :: e0(SZK_(G)+1)   ! The resting interface heights [Z ~> m], usually
                           ! negative because it is positive upward.
   real :: eta1D(SZK_(G)+1)! Interface height relative to the sea surface
-                          ! positive upward, in depth units (Z).
-  real :: min_thickness   ! The minimum layer thicknesses, in Z.
-  real :: S_surf, S_range, S_ref, S_light, S_dense ! Various salinities, in ppt.
-  real :: eta_IC_quanta   ! The granularity of quantization of intial interface heights, in Z-1.
+                          ! positive upward [Z ~> m].
+  real :: min_thickness   ! The minimum layer thicknesses [Z ~> m].
+  real :: S_surf, S_range, S_ref, S_light, S_dense ! Various salinities [ppt].
+  real :: eta_IC_quanta   ! The granularity of quantization of intial interface heights [Z-1 ~> m-1].
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
   character(len=20) :: verticalCoordinate
@@ -129,7 +132,7 @@ subroutine dumbbell_initialize_thickness ( h, G, GV, US, param_file, just_read_p
     call get_param(param_file, mdl, "TS_RANGE_S_LIGHT", S_light, default = S_Ref, do_not_log=.true.)
     call get_param(param_file, mdl, "TS_RANGE_S_DENSE", S_dense, default = S_Ref, do_not_log=.true.)
     call get_param(param_file, mdl, "INTERFACE_IC_QUANTA", eta_IC_quanta, &
-                   "The granularity of initial interface height values \n"//&
+                   "The granularity of initial interface height values "//&
                    "per meter, to avoid sensivity to order-of-arithmetic changes.", &
                    default=2048.0, units="m-1", scale=US%Z_to_m, do_not_log=just_read)
     if (just_read) return ! All run-time parameters have been read, so return.
@@ -192,9 +195,9 @@ subroutine dumbbell_initialize_temperature_salinity ( T, S, h, G, GV, param_file
                                                   eqn_of_state, just_read_params)
   type(ocean_grid_type),                     intent(in)  :: G !< Ocean grid structure
   type(verticalGrid_type),                   intent(in) :: GV !< Vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G), SZK_(G)), intent(out) :: T !< Potential temperature (degC)
-  real, dimension(SZI_(G),SZJ_(G), SZK_(G)), intent(out) :: S !< Salinity (ppt)
-  real, dimension(SZI_(G),SZJ_(G), SZK_(G)), intent(in)  :: h !< Layer thickness (m or Pa)
+  real, dimension(SZI_(G),SZJ_(G), SZK_(G)), intent(out) :: T !< Potential temperature [degC]
+  real, dimension(SZI_(G),SZJ_(G), SZK_(G)), intent(out) :: S !< Salinity [ppt]
+  real, dimension(SZI_(G),SZJ_(G), SZK_(G)), intent(in)  :: h !< Layer thickness [H ~> m or kg m-2]
   type(param_file_type),                     intent(in)  :: param_file !< Parameter file structure
   type(EOS_type),                            pointer     :: eqn_of_state !< Equation of state structure
   logical,       optional, intent(in)  :: just_read_params !< If present and true, this call will
@@ -217,7 +220,7 @@ subroutine dumbbell_initialize_temperature_salinity ( T, S, h, G, GV, param_file
   call get_param(param_file, mdl, "REGRIDDING_COORDINATE_MODE", verticalCoordinate, &
                  default=DEFAULT_COORDINATE_MODE, do_not_log=just_read)
   call get_param(param_file, mdl,"INITIAL_DENSITY_PROFILE", density_profile, &
-                 'Initial profile shape. Valid values are "linear", "parabolic"\n'// &
+                 'Initial profile shape. Valid values are "linear", "parabolic" '// &
                  'and "exponential".', default='linear', do_not_log=just_read)
   call get_param(param_file, mdl,"DUMBBELL_SREF", S_surf, &
                  'DUMBBELL REFERENCE SALINITY', units='1e-3', default=34., do_not_log=just_read)

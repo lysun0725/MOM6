@@ -34,7 +34,7 @@ implicit none ; private
 
 #include <MOM_memory.h>
 
-public idealized_hurricane_wind_init !Public interface to intialize the idealized
+public idealized_hurricane_wind_init !Public interface to initialize the idealized
                                      ! hurricane wind profile.
 public idealized_hurricane_wind_forcing !Public interface to update the idealized
                                         ! hurricane wind profile.
@@ -45,15 +45,15 @@ public SCM_idealized_hurricane_wind_forcing !Public interface to the legacy idea
 type, public :: idealized_hurricane_CS ; private
 
   ! Parameters used to compute Holland radial wind profile
-  real    :: rho_a                !< Mean air density [kg/m3]
+  real    :: rho_a                !< Mean air density [kg m-3]
   real    :: pressure_ambient     !< Pressure at surface of ambient air [Pa]
   real    :: pressure_central     !< Pressure at surface at hurricane center [Pa]
   real    :: rad_max_wind         !< Radius of maximum winds [m]
-  real    :: max_windspeed        !< Maximum wind speeds [m/s]
-  real    :: hurr_translation_spd !< Hurricane translation speed [m/s]
-  real    :: hurr_translation_dir !< Hurricane translation speed [m/s]
-  real    :: gustiness            !< Gustiness (optional, used in u*) [m/s]
-  real    :: Rho0                 !< A reference ocean density [kg/m3]
+  real    :: max_windspeed        !< Maximum wind speeds [m s-1]
+  real    :: hurr_translation_spd !< Hurricane translation speed [m s-1]
+  real    :: hurr_translation_dir !< Hurricane translation speed [m s-1]
+  real    :: gustiness            !< Gustiness (optional, used in u*) [m s-1]
+  real    :: Rho0                 !< A reference ocean density [kg m-3]
   real    :: Hurr_cen_Y0          !< The initial y position of the hurricane
                                   !!  This experiment is conducted in a Cartesian
                                   !!  grid and this is assumed to be in meters [m]
@@ -69,7 +69,7 @@ type, public :: idealized_hurricane_CS ; private
 
 
   ! Parameters used if in SCM (single column model) mode
-  logical :: SCM_mode        !< Single Column Model Mode [nd]
+  logical :: SCM_mode        !< If true this being used in Single Column Model mode
   logical :: BR_BENCH        !< A "benchmark" configuration (which is meant to
                              !!  provide identical wind to reproduce a previous
                              !!  experiment, where that wind formula contained
@@ -121,25 +121,25 @@ subroutine idealized_hurricane_wind_init(Time, G, param_file, CS)
 
   ! Parameters for computing a wind profile
   call get_param(param_file, mdl, "IDL_HURR_RHO_AIR", CS%rho_a, &
-                 "Air density used to compute the idealized hurricane"// &
+                 "Air density used to compute the idealized hurricane "//&
                  "wind profile.", units='kg/m3', default=1.2)
   call get_param(param_file, mdl, "IDL_HURR_AMBIENT_PRESSURE", &
-                 CS%pressure_ambient, "Ambient pressure used in the "// &
+                 CS%pressure_ambient, "Ambient pressure used in the "//&
                  "idealized hurricane wind profile.", units='Pa', &
                  default=101200.)
   call get_param(param_file, mdl, "IDL_HURR_CENTRAL_PRESSURE", &
-                 CS%pressure_central, "Central pressure used in the "// &
+                 CS%pressure_central, "Central pressure used in the "//&
                  "idealized hurricane wind profile.", units='Pa', &
                  default=96800.)
   call get_param(param_file, mdl, "IDL_HURR_RAD_MAX_WIND", &
-                 CS%rad_max_wind, "Radius of maximum winds used in the"// &
+                 CS%rad_max_wind, "Radius of maximum winds used in the "//&
                  "idealized hurricane wind profile.", units='m', &
                  default=50.e3)
   call get_param(param_file, mdl, "IDL_HURR_MAX_WIND", CS%max_windspeed, &
                  "Maximum wind speed used in the idealized hurricane"// &
                  "wind profile.", units='m/s', default=65.)
   call get_param(param_file, mdl, "IDL_HURR_TRAN_SPEED", CS%hurr_translation_spd, &
-                 "Translation speed of hurricane used in the idealized"// &
+                 "Translation speed of hurricane used in the idealized "//&
                  "hurricane wind profile.", units='m/s', default=5.0)
   call get_param(param_file, mdl, "IDL_HURR_TRAN_DIR", CS%hurr_translation_dir, &
                  "Translation direction (towards) of hurricane used in the "//&
@@ -153,7 +153,7 @@ subroutine idealized_hurricane_wind_init(Time, G, param_file, CS)
                  "Idealized Hurricane initial Y position", &
                  units='m', default=0.)
   call get_param(param_file, mdl, "IDL_HURR_TAU_CURR_REL", CS%relative_tau, &
-                 "Current relative stress switch"//                         &
+                 "Current relative stress switch "//&
                  "used in the idealized hurricane wind profile.", &
                  units='', default=.false.)
 
@@ -163,20 +163,20 @@ subroutine idealized_hurricane_wind_init(Time, G, param_file, CS)
                  "invoking a modification (bug) in the wind profile meant to "//&
                  "reproduce a previous implementation.", units='', default=.false.)
   call get_param(param_file, mdl, "IDL_HURR_SCM", CS%SCM_MODE, &
-                 "Single Column mode switch"//                         &
+                 "Single Column mode switch "//&
                  "used in the SCM idealized hurricane wind profile.", &
                  units='', default=.false.)
   call get_param(param_file, mdl, "IDL_HURR_SCM_LOCY", CS%DY_from_center, &
-                 "Y distance of station used in the SCM idealized hurricane "// &
+                 "Y distance of station used in the SCM idealized hurricane "//&
                  "wind profile.", units='m', default=50.e3)
 
   ! The following parameters are model run-time parameters which are used
   ! and logged elsewhere and so should not be logged here. The default
   ! value should be consistent with the rest of the model.
   call get_param(param_file, mdl, "RHO_0", CS%Rho0, &
-                 "The mean ocean density used with BOUSSINESQ true to \n"//&
-                 "calculate accelerations and the mass for conservation \n"//&
-                 "properties, or with BOUSSINSEQ false to convert some \n"//&
+                 "The mean ocean density used with BOUSSINESQ true to "//&
+                 "calculate accelerations and the mass for conservation "//&
+                 "properties, or with BOUSSINSEQ false to convert some "//&
                  "parameters from vertical units of m to kg m-2.", &
                  units="kg m-3", default=1035.0, do_not_log=.true.)
   call get_param(param_file, mdl, "GUST_CONST", CS%gustiness, &
@@ -198,10 +198,10 @@ end subroutine idealized_hurricane_wind_init
 
 !> Computes the surface wind for the idealized hurricane test cases
 subroutine idealized_hurricane_wind_forcing(state, forces, day, G, US, CS)
-  type(surface),          intent(in)    :: state  !< Surface state structure
-  type(mech_forcing),     intent(inout) :: forces !< A structure with the driving mechanical forces
-  type(time_type),        intent(in)    :: day    !< Time in days
-  type(ocean_grid_type),  intent(inout) :: G      !< Grid structure
+  type(surface),                intent(in)    :: state  !< Surface state structure
+  type(mech_forcing),           intent(inout) :: forces !< A structure with the driving mechanical forces
+  type(time_type),              intent(in)    :: day    !< Time in days
+  type(ocean_grid_type),        intent(inout) :: G      !< Grid structure
   type(unit_scale_type),        intent(in)    :: US     !< A dimensional unit scaling type
   type(idealized_hurricane_CS), pointer       :: CS     !< Container for idealized hurricane parameters
 
@@ -258,8 +258,7 @@ subroutine idealized_hurricane_wind_forcing(state, forces, day, G, US, CS)
       Uocn = state%u(I,j)*REL_TAU_FAC
       Vocn = 0.25*(state%v(i,J)+state%v(i+1,J-1)&
              +state%v(i+1,J)+state%v(i,J-1))*REL_TAU_FAC
-      f = abs(0.5*(G%CoriolisBu(I,J)+G%CoriolisBu(I,J-1)))*fbench_fac &
-           + fbench
+      f = abs(0.5*US%s_to_T*(G%CoriolisBu(I,J)+G%CoriolisBu(I,J-1)))*fbench_fac + fbench
       ! Calculate position as a function of time.
       if (CS%SCM_mode) then
         YY = YC + CS%dy_from_center
@@ -281,8 +280,7 @@ subroutine idealized_hurricane_wind_forcing(state, forces, day, G, US, CS)
       Uocn = 0.25*(state%u(I,j)+state%u(I-1,j+1)&
             +state%u(I-1,j)+state%u(I,j+1))*REL_TAU_FAC
       Vocn = state%v(i,J)*REL_TAU_FAC
-      f = abs(0.5*(G%CoriolisBu(I-1,J)+G%CoriolisBu(I,J)))*fbench_fac &
-           + fbench
+      f = abs(0.5*US%s_to_T*(G%CoriolisBu(I-1,J)+G%CoriolisBu(I,J)))*fbench_fac + fbench
       ! Calculate position as a function of time.
       if (CS%SCM_mode) then
         YY = YC + CS%dy_from_center
@@ -302,7 +300,7 @@ subroutine idealized_hurricane_wind_forcing(state, forces, day, G, US, CS)
   do j=js,je
     do i=is,ie
       !  This expression can be changed if desired, but need not be.
-      forces%ustar(i,j) = US%m_to_Z * G%mask2dT(i,j) * sqrt(CS%gustiness/CS%Rho0 + &
+      forces%ustar(i,j) = US%m_to_Z*US%T_to_s * G%mask2dT(i,j) * sqrt(CS%gustiness/CS%Rho0 + &
          sqrt(0.5*(forces%taux(I-1,j)**2 + forces%taux(I,j)**2) + &
             0.5*(forces%tauy(i,J-1)**2 + forces%tauy(i,J)**2))/CS%Rho0)
     enddo
@@ -354,7 +352,7 @@ subroutine idealized_hurricane_wind_profile(CS, absf, YY, XX, UOCN, VOCN, Tx, Ty
 
   ! Implementing Holland (1980) parameteric wind profile
 
-  Radius = SQRT(XX**2.+YY**2.)
+  Radius = SQRT(XX**2 + YY**2)
 
   !/ BGR
   ! rkm - r converted to km for Holland prof.
@@ -487,15 +485,15 @@ subroutine SCM_idealized_hurricane_wind_forcing(state, forces, day, G, US, CS)
      B = C**2 * 1.2 * exp(1.0)
   endif
   A = (CS%rad_max_wind/1000.)**B
-  f =G%CoriolisBu(is,js) ! f=f(x,y) but in the SCM is constant
+  f = US%s_to_T*G%CoriolisBu(is,js) ! f=f(x,y) but in the SCM is constant
   if (BR_Bench) then
      ! f reset to value used in generated wind for benchmark test
-     f = 5.5659e-05
+     f = 5.5659e-05  !### A constant value in s-1.
   endif
   !/ BR
   ! Calculate x position as a function of time.
   xx = ( t0 - time_type_to_real(day)) * CS%hurr_translation_spd * cos(transdir)
-  r = sqrt(xx**2.+CS%DY_from_center**2.)
+  r = sqrt(xx**2 + CS%DY_from_center**2)
   !/ BR
   ! rkm - r converted to km for Holland prof.
   !       used in km due to error, correct implementation should
@@ -553,7 +551,7 @@ subroutine SCM_idealized_hurricane_wind_forcing(state, forces, day, G, US, CS)
   U_TS = CS%hurr_translation_spd/2.*cos(transdir)
   V_TS = CS%hurr_translation_spd/2.*sin(transdir)
 
-  ! Set the surface wind stresses, in units of Pa. A positive taux
+  ! Set the surface wind stresses, in [Pa]. A positive taux
   ! accelerates the ocean to the (pseudo-)east.
   !   The i-loop extends to is-1 so that taux can be used later in the
   ! calculation of ustar - otherwise the lower bound would be Isq.
@@ -601,10 +599,10 @@ subroutine SCM_idealized_hurricane_wind_forcing(state, forces, day, G, US, CS)
     endif
     forces%tauy(I,j) = CS%rho_a * G%mask2dCv(I,j) * Cd*du10*dV
   enddo ; enddo
-  ! Set the surface friction velocity, in units of m s-1. ustar is always positive.
+  ! Set the surface friction velocity [m s-1]. ustar is always positive.
   do j=js,je ; do i=is,ie
     !  This expression can be changed if desired, but need not be.
-    forces%ustar(i,j) = US%m_to_Z * G%mask2dT(i,j) * sqrt(CS%gustiness/CS%Rho0 + &
+    forces%ustar(i,j) = US%m_to_Z*US%T_to_s * G%mask2dT(i,j) * sqrt(CS%gustiness/CS%Rho0 + &
        sqrt(0.5*(forces%taux(I-1,j)**2 + forces%taux(I,j)**2) + &
             0.5*(forces%tauy(i,J-1)**2 + forces%tauy(i,J)**2))/CS%Rho0)
   enddo ; enddo

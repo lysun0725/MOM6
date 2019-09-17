@@ -33,26 +33,35 @@ public ISOMIP_initialize_thickness
 public ISOMIP_initialize_temperature_salinity
 public ISOMIP_initialize_sponges
 
+! A note on unit descriptions in comments: MOM6 uses units that can be rescaled for dimensional
+! consistency testing. These are noted in comments with units like Z, H, L, and T, along with
+! their mks counterparts with notation like "a velocity [Z T-1 ~> m s-1]".  If the units
+! vary with the Boussinesq approximation, the Boussinesq variant is given first.
+
 contains
 
 !> Initialization of topography for the ISOMIP configuration
-subroutine ISOMIP_initialize_topography(D, G, param_file, max_depth)
-  type(dyn_horgrid_type),             intent(in)  :: G !< The dynamic horizontal grid type
+subroutine ISOMIP_initialize_topography(D, G, param_file, max_depth, US)
+  type(dyn_horgrid_type),          intent(in)  :: G !< The dynamic horizontal grid type
   real, dimension(G%isd:G%ied,G%jsd:G%jed), &
-                                      intent(out) :: D !< Ocean bottom depth in m
-  type(param_file_type),              intent(in)  :: param_file !< Parameter file structure
-  real,                               intent(in)  :: max_depth  !< Maximum depth of model in m
+                                   intent(out) :: D !< Ocean bottom depth in m or Z if US is present
+  type(param_file_type),           intent(in)  :: param_file !< Parameter file structure
+  real,                            intent(in)  :: max_depth !< Maximum model depth in the units of D
+  type(unit_scale_type), optional, intent(in)  :: US !< A dimensional unit scaling type
+
   ! Local variables
-  real :: min_depth ! The minimum and maximum depths in m.
+  real :: min_depth ! The minimum and maximum depths [Z ~> m].
+  real :: m_to_Z  ! A dimensional rescaling factor.
   ! The following variables are used to set up the bathymetry in the ISOMIP example.
   real :: bmax            ! max depth of bedrock topography
   real :: b0,b2,b4,b6     ! first, second, third and fourth bedrock topography coeff
-  real :: xbar           ! characteristic along-flow lenght scale of the bedrock
-  real :: dc              ! depth of the trough compared with side walls
+  real :: xbar            ! characteristic along-flow lenght scale of the bedrock
+  real :: dc              ! depth of the trough compared with side walls [Z ~> m].
   real :: fc              ! characteristic width of the side walls of the channel
   real :: wc              ! half-width of the trough
   real :: ly              ! domain width (across ice flow)
-  real :: bx, by, xtil    ! dummy vatiables
+  real :: bx, by          ! dummy vatiables [Z ~> m].
+  real :: xtil            ! dummy vatiable
   logical :: is_2D         ! If true, use 2D setup
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
@@ -63,15 +72,18 @@ subroutine ISOMIP_initialize_topography(D, G, param_file, max_depth)
 
   call MOM_mesg("  ISOMIP_initialization.F90, ISOMIP_initialize_topography: setting topography", 5)
 
+  m_to_Z = 1.0 ; if (present(US)) m_to_Z = US%m_to_Z
+
   call log_version(param_file, mdl, version, "")
   call get_param(param_file, mdl, "MINIMUM_DEPTH", min_depth, &
-                 "The minimum depth of the ocean.", units="m", default=0.0)
+                 "The minimum depth of the ocean.", units="m", default=0.0, scale=m_to_Z)
   call get_param(param_file, mdl, "ISOMIP_2D",is_2D,'If true, use a 2D setup.', default=.false.)
 
   ! The following variables should be transformed into runtime parameters?
-  bmax=720.0; b0=-150.0; b2=-728.8; b4=343.91; b6=-50.57
-  xbar=300.0E3; dc=500.0; fc=4.0E3; wc=24.0E3; ly=80.0E3
-  bx = 0.0; by = 0.0; xtil = 0.0
+  bmax = 720.0*m_to_Z ; dc = 500.0*m_to_Z
+  b0 = -150.0*m_to_Z ; b2 = -728.8*m_to_Z ; b4 = 343.91*m_to_Z ; b6 = -50.57*m_to_Z
+  xbar = 300.0e3 ; fc = 4.0e3 ; wc = 24.0e3 ; ly = 80.0e3
+  bx = 0.0 ; by = 0.0 ; xtil = 0.0
 
 
   if (is_2D) then
@@ -79,15 +91,15 @@ subroutine ISOMIP_initialize_topography(D, G, param_file, max_depth)
       ! 2D setup
       xtil = G%geoLonT(i,j)*1.0e3/xbar
       !xtil = 450*1.0e3/xbar
-      bx = b0+b2*xtil**2 + b4*xtil**4 + b6*xtil**6
+      bx = b0 + b2*xtil**2 + b4*xtil**4 + b6*xtil**6
       !by = (dc/(1.+exp(-2.*(G%geoLatT(i,j)*1.0e3- ly/2. - wc)/fc))) + &
       !        (dc/(1.+exp(2.*(G%geoLatT(i,j)*1.0e3- ly/2. + wc)/fc)))
 
       ! slice at y = 40 km
-      by = (dc/(1.+exp(-2.*(40.0*1.0e3- ly/2. - wc)/fc))) + &
-           (dc/(1.+exp(2.*(40.0*1.0e3- ly/2. + wc)/fc)))
+      by = (dc / (1.+exp(-2.*(40.0*1.0e3- ly/2. - wc)/fc))) + &
+           (dc / (1.+exp(2.*(40.0*1.0e3- ly/2. + wc)/fc)))
 
-      D(i,j) = -max(bx+by,-bmax)
+      D(i,j) = -max(bx+by, -bmax)
       if (D(i,j) > max_depth) D(i,j) = max_depth
       if (D(i,j) < min_depth) D(i,j) = 0.5*min_depth
     enddo ; enddo
@@ -95,21 +107,21 @@ subroutine ISOMIP_initialize_topography(D, G, param_file, max_depth)
   else
     do j=js,je ; do i=is,ie
       ! 3D setup
-      ! #### TEST #######
+      ! ===== TEST =====
       !if (G%geoLonT(i,j)<500.) then
       !  xtil = 500.*1.0e3/xbar
       !else
       !  xtil = G%geoLonT(i,j)*1.0e3/xbar
       !endif
-      ! ##### TEST #####
+      ! ===== TEST =====
 
       xtil = G%geoLonT(i,j)*1.0e3/xbar
 
-      bx = b0+b2*xtil**2 + b4*xtil**4 + b6*xtil**6
-      by = (dc/(1.+exp(-2.*(G%geoLatT(i,j)*1.0e3- ly/2. - wc)/fc))) + &
-              (dc/(1.+exp(2.*(G%geoLatT(i,j)*1.0e3- ly/2. + wc)/fc)))
+      bx = b0 + b2*xtil**2 + b4*xtil**4 + b6*xtil**6
+      by = (dc / (1.+exp(-2.*(G%geoLatT(i,j)*1.0e3- ly/2. - wc)/fc))) + &
+           (dc / (1.+exp(2.*(G%geoLatT(i,j)*1.0e3- ly/2. + wc)/fc)))
 
-      D(i,j) = -max(bx+by,-bmax)
+      D(i,j) = -max(bx+by, -bmax)
       if (D(i,j) > max_depth) D(i,j) = max_depth
       if (D(i,j) < min_depth) D(i,j) = 0.5*min_depth
     enddo ; enddo
@@ -123,7 +135,7 @@ subroutine ISOMIP_initialize_thickness ( h, G, GV, US, param_file, tv, just_read
   type(verticalGrid_type), intent(in)  :: GV          !< The ocean's vertical grid structure.
   type(unit_scale_type),   intent(in)  :: US          !< A dimensional unit scaling type
   real, dimension(SZI_(G),SZJ_(G),SZK_(GV)), &
-                           intent(out) :: h           !< The thickness that is being initialized, in H.
+                           intent(out) :: h           !< The thickness that is being initialized [H ~> m or kg m-2].
   type(param_file_type),   intent(in)  :: param_file  !< A structure indicating the open file
                                                       !! to parse for model parameter values.
   type(thermo_var_ptrs),   intent(in)  :: tv          !< A structure containing pointers to any
@@ -132,10 +144,10 @@ subroutine ISOMIP_initialize_thickness ( h, G, GV, US, param_file, tv, just_read
   logical,       optional, intent(in)  :: just_read_params !< If present and true, this call will
                                                       !! only read parameters without changing h.
   ! Local variables
-  real :: e0(SZK_(G)+1)   ! The resting interface heights, in depth units (Z),
+  real :: e0(SZK_(G)+1)   ! The resting interface heights, in depth units [Z ~> m],
                           !  usually negative because it is positive upward.
   real :: eta1D(SZK_(G)+1)! Interface height relative to the sea surface
-                          ! positive upward, in depth units (Z).
+                          ! positive upward, in depth units [Z ~> m].
   integer :: i, j, k, is, ie, js, je, nz, tmp1
   real    :: x
   real    :: rho_range
@@ -240,9 +252,9 @@ subroutine ISOMIP_initialize_temperature_salinity ( T, S, h, G, GV, param_file, 
                                                     eqn_of_state, just_read_params)
   type(ocean_grid_type),                     intent(in)  :: G !< Ocean grid structure
   type(verticalGrid_type),                   intent(in)  :: GV !< Vertical grid structure
-  real, dimension(SZI_(G),SZJ_(G), SZK_(G)), intent(out) :: T !< Potential temperature (degC)
-  real, dimension(SZI_(G),SZJ_(G), SZK_(G)), intent(out) :: S !< Salinity (ppt)
-  real, dimension(SZI_(G),SZJ_(G), SZK_(G)), intent(in)  :: h !< Layer thickness in H (m or kg m-2)
+  real, dimension(SZI_(G),SZJ_(G), SZK_(G)), intent(out) :: T !< Potential temperature [degC]
+  real, dimension(SZI_(G),SZJ_(G), SZK_(G)), intent(out) :: S !< Salinity [ppt]
+  real, dimension(SZI_(G),SZJ_(G), SZK_(G)), intent(in)  :: h !< Layer thickness [H ~> m or kg m-2]
   type(param_file_type),                     intent(in)  :: param_file !< Parameter file structure
   type(EOS_type),                            pointer     :: eqn_of_state !< Equation of state structure
   logical,       optional, intent(in)  :: just_read_params !< If present and true, this call will
@@ -250,20 +262,22 @@ subroutine ISOMIP_initialize_temperature_salinity ( T, S, h, G, GV, param_file, 
   ! Local variables
   integer   :: i, j, k, is, ie, js, je, nz, itt
   real      :: x, ds, dt, rho_sur, rho_bot
-  real      :: xi0, xi1 ! Heights in depth units (Z).
-  real      :: S_sur, T_sur, S_bot, T_bot
-  real      :: dT_dz, dS_dz  ! Gradients of T and S in degC/Z and PPT/Z.
-  real      :: z          ! vertical position in z space
-  character(len=256) :: mesg  ! The text of an error message
+  real      :: xi0, xi1 ! Heights in depth units [Z ~> m].
+  real      :: S_sur, S_bot ! Salinity at the surface and bottom [ppt]
+  real      :: T_sur, T_bot ! Temperature at the bottom [degC]
+  real      :: dT_dz  ! Vertical gradient of temperature [degC Z-1 ~> degC m-1].
+  real      :: dS_dz  ! Vertical gradient of salinity [ppt Z-1 ~> ppt m-1].
+  real      :: z            ! vertical position in z space [Z ~> m]
+  character(len=256) :: mesg ! The text of an error message
   character(len=40) :: verticalCoordinate, density_profile
   real :: rho_tmp
-  logical :: just_read    ! If true, just read parameters but set nothing.
+  logical :: just_read       ! If true, just read parameters but set nothing.
   logical :: fit_salin       ! If true, accept the prescribed temperature and fit the salinity.
   real :: T0(SZK_(G)), S0(SZK_(G))
-  real :: drho_dT(SZK_(G))   ! Derivative of density with temperature in kg m-3 K-1.                              !
-  real :: drho_dS(SZK_(G))   ! Derivative of density with salinity in kg m-3 PSU-1.                             !
-  real :: rho_guess(SZK_(G)) ! Potential density at T0 & S0 in kg m-3.
-  real :: pres(SZK_(G))      ! An array of the reference pressure in Pa. (zero here)
+  real :: drho_dT(SZK_(G))   ! Derivative of density with temperature [kg m-3 degC-1].
+  real :: drho_dS(SZK_(G))   ! Derivative of density with salinity [kg m-3 ppt-1].
+  real :: rho_guess(SZK_(G)) ! Potential density at T0 & S0 [kg m-3].
+  real :: pres(SZK_(G))      ! An array of the reference pressure [Pa]. (zero here)
   real :: drho_dT1, drho_dS1, T_Ref, S_Ref
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = G%ke
   pres(:) = 0.0
@@ -307,7 +321,7 @@ subroutine ISOMIP_initialize_temperature_salinity ( T, S, h, G, GV, param_file, 
 
     case ( REGRIDDING_LAYER )
       call get_param(param_file, mdl, "FIT_SALINITY", fit_salin, &
-                  "If true, accept the prescribed temperature and fit the \n"//&
+                  "If true, accept the prescribed temperature and fit the "//&
                   "salinity; otherwise take salinity and fit temperature.", &
                   default=.false., do_not_log=just_read)
       call get_param(param_file, mdl, "DRHO_DS", drho_dS1, &
@@ -421,7 +435,7 @@ subroutine ISOMIP_initialize_sponges(G, GV, US, tv, PF, use_ALE, CSp, ACSp)
   real :: S(SZI_(G),SZJ_(G),SZK_(G))  ! A temporary array for salt
   real :: RHO(SZI_(G),SZJ_(G),SZK_(G))  ! A temporary array for RHO
   real :: h(SZI_(G),SZJ_(G),SZK_(G))  ! A temporary array for thickness
-  real :: Idamp(SZI_(G),SZJ_(G))    ! The inverse damping rate, in s-1.
+  real :: Idamp(SZI_(G),SZJ_(G))    ! The inverse damping rate [s-1].
   real :: TNUDG                     ! Nudging time scale, days
   real :: S_sur, T_sur              ! Surface salinity and temerature in sponge
   real :: S_bot, T_bot              ! Bottom salinity and temerature in sponge
@@ -429,10 +443,10 @@ subroutine ISOMIP_initialize_sponges(G, GV, US, tv, PF, use_ALE, CSp, ACSp)
   real :: rho_sur, rho_bot, rho_range
   real :: dT_dz, dS_dz              ! Gradients of T and S in degC/Z and PPT/Z.
 
-  real :: e0(SZK_(G)+1)             ! The resting interface heights, in Z, usually
+  real :: e0(SZK_(G)+1)             ! The resting interface heights [Z ~> m], usually
                                     ! negative because it is positive upward.
-  real :: eta1D(SZK_(G)+1)          ! Interface height relative to the sea surface, positive upward, in Z.
-  real :: eta(SZI_(G),SZJ_(G),SZK_(G)+1) ! A temporary array for eta, in Z.
+  real :: eta1D(SZK_(G)+1)          ! Interface height relative to the sea surface, positive upward [Z ~> m].
+  real :: eta(SZI_(G),SZJ_(G),SZK_(G)+1) ! A temporary array for eta [Z ~> m].
   real :: min_depth, dummy1, z
   real :: damp, rho_dummy, min_thickness, rho_tmp, xi0
   character(len=40) :: verticalCoordinate, filename, state_file
@@ -459,10 +473,10 @@ subroutine ISOMIP_initialize_sponges(G, GV, US, tv, PF, use_ALE, CSp, ACSp)
                  do_not_log=.true.)
 
   call get_param(PF, mdl, "ISOMIP_S_SUR_SPONGE", s_sur, &
-                 'Surface salinity in sponge layer.', default=s_ref) ! units="PSU")
+                 'Surface salinity in sponge layer.', default=s_ref) ! units="ppt")
 
   call get_param(PF, mdl, "ISOMIP_S_BOT_SPONGE", s_bot, &
-                 'Bottom salinity in sponge layer.', default=s_ref) ! units="PSU")
+                 'Bottom salinity in sponge layer.', default=s_ref) ! units="ppt")
 
   call get_param(PF, mdl, "ISOMIP_T_SUR_SPONGE", t_sur, &
                  'Surface temperature in sponge layer.', default=t_ref) ! units="degC")
@@ -481,7 +495,7 @@ subroutine ISOMIP_initialize_sponges(G, GV, US, tv, PF, use_ALE, CSp, ACSp)
   if (associated(ACSp)) call MOM_error(FATAL, &
         "ISOMIP_initialize_sponges called with an associated ALE-sponge control structure.")
 
-  !  Here the inverse damping time, in s-1, is set. Set Idamp to 0     !
+  !  Here the inverse damping time [s-1], is set. Set Idamp to 0     !
   !  wherever there is no sponge, and the subroutines that are called  !
   !  will automatically set up the sponges only where Idamp is positive!
   !  and mask2dT is 1.
@@ -614,16 +628,16 @@ subroutine ISOMIP_initialize_sponges(G, GV, US, tv, PF, use_ALE, CSp, ACSp)
     ! sponge, FIT_SALINITY=False. The oposite is true for temp. One can
     ! combined the *correct* temp and salt values in one file instead.
     call get_param(PF, mdl, "ISOMIP_SPONGE_FILE", state_file, &
-              "The name of the file with temps., salts. and interfaces to \n"// &
+              "The name of the file with temps., salts. and interfaces to "//&
               "damp toward.", fail_if_missing=.true.)
     call get_param(PF, mdl, "SPONGE_PTEMP_VAR", temp_var, &
-              "The name of the potential temperature variable in \n"//&
+              "The name of the potential temperature variable in "//&
               "SPONGE_STATE_FILE.", default="Temp")
     call get_param(PF, mdl, "SPONGE_SALT_VAR", salt_var, &
-              "The name of the salinity variable in \n"//&
+              "The name of the salinity variable in "//&
               "SPONGE_STATE_FILE.", default="Salt")
     call get_param(PF, mdl, "SPONGE_ETA_VAR", eta_var, &
-              "The name of the interface height variable in \n"//&
+              "The name of the interface height variable in "//&
               "SPONGE_STATE_FILE.", default="eta")
 
     !read temp and eta
