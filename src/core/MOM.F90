@@ -294,6 +294,7 @@ type, public :: MOM_control_struct ; private
   real    :: bad_val_sss_max    !< Maximum SSS before triggering bad value message [ppt]
   real    :: bad_val_col_thick  !< Minimum column thickness before triggering bad value message [m]
   logical :: use_particles      !< Turns on the particles package.
+  character(len=10) :: particle_type !< Particle types include: surface (default), profiling and sail drone.
 
   type(MOM_diag_IDs)       :: IDs      !<  Handles used for diagnostics.
   type(transport_diag_IDs) :: transport_IDs  !< Handles used for transport diagnostics.
