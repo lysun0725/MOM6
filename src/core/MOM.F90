@@ -1303,7 +1303,10 @@ subroutine step_MOM_thermo(CS, G, GV, US, u, v, h, tv, fluxes, dtdia, &
 
   if (CS%use_particles) then 
     part_time = CS%Time + set_time(int(floor(0.5 + 0.5*dtdia)))
-    call particles_run(CS%particles, part_time, CS%u(:,:,1), CS%v(:,:,1)) ! Run the particles model
+    call particles_run(CS%particles, part_time, CS%u, CS%v, CS%h, CS%uh, CS%uhtr, &
+                      CS%vh, CS%vhtr, CS%time_in_thermo_cycle, CS%tv, CS%diabatic_first, &
+                      CS%dt_therm, CS%thermo_spans_coupling) ! Run the particles model
+
   endif
 
 end subroutine step_MOM_thermo
