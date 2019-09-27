@@ -40,7 +40,7 @@ use MOM_obsolete_params,      only : find_obsolete_params
 use MOM_restart,              only : register_restart_field, query_initialized, save_restart
 use MOM_restart,              only : restart_init, is_new_run, MOM_restart_CS
 use MOM_spatial_means,        only : global_mass_integral
-use MOM_time_manager,         only : time_type, real_to_time, time_type_to_real, operator(+)
+use MOM_time_manager,         only : time_type, set_time, real_to_time, time_type_to_real, operator(+)
 use MOM_time_manager,         only : operator(-), operator(>), operator(*), operator(/)
 use MOM_time_manager,         only : operator(>=), increment_date
 use MOM_unit_tests,           only : unit_tests
@@ -130,6 +130,7 @@ use MOM_offline_main,          only : offline_redistribute_residual, offline_dia
 use MOM_offline_main,          only : offline_fw_fluxes_into_ocean, offline_fw_fluxes_out_ocean
 use MOM_offline_main,          only : offline_advection_layer, offline_transport_end
 use MOM_ALE,                   only : ale_offline_tracer_final, ALE_main_offline
+use MOM_particles_mod,         only : particles, particles_init, particles_run, particles_save_restart
 
 implicit none ; private
 
@@ -292,6 +293,7 @@ type, public :: MOM_control_struct ; private
   real    :: bad_val_sst_min    !< Minimum SST before triggering bad value message [degC]
   real    :: bad_val_sss_max    !< Maximum SSS before triggering bad value message [ppt]
   real    :: bad_val_col_thick  !< Minimum column thickness before triggering bad value message [m]
+  logical :: use_particles      !< Turns on the particles package.
 
   type(MOM_diag_IDs)       :: IDs      !<  Handles used for diagnostics.
   type(transport_diag_IDs) :: transport_IDs  !< Handles used for transport diagnostics.
@@ -356,6 +358,7 @@ type, public :: MOM_control_struct ; private
   type(ODA_CS), pointer :: odaCS => NULL() !< a pointer to the control structure for handling
                                 !! ensemble model state vectors and data assimilation
                                 !! increments and priors
+  type(particles), pointer :: particles => NULL() !< Lagrangian particles
 end type MOM_control_struct
 
 public initialize_MOM, finish_MOM_initialization, MOM_end
@@ -1148,6 +1151,7 @@ subroutine step_MOM_thermo(CS, G, GV, US, u, v, h, tv, fluxes, dtdia, &
   logical :: use_ice_shelf ! Needed for selecting the right ALE interface.
   logical :: showCallTree
   type(group_pass_type) :: pass_T_S, pass_T_S_h, pass_uv_T_S_h
+  type(time_type) :: part_time
   integer :: dynamics_stencil  ! The computational stencil for the calculations
                                ! in the dynamic core.
   integer :: i, j, k, is, ie, js, je, nz! , Isq, Ieq, Jsq, Jeq, n
@@ -1296,6 +1300,11 @@ subroutine step_MOM_thermo(CS, G, GV, US, u, v, h, tv, fluxes, dtdia, &
   call disable_averaging(CS%diag)
 
   if (showCallTree) call callTree_leave("step_MOM_thermo(), MOM.F90")
+
+  if (CS%use_particles) then 
+    part_time = CS%Time + set_time(int(floor(0.5 + 0.5*dtdia)))
+    call particles_run(CS%particles, part_time, CS%u(:,:,1), CS%v(:,:,1)) ! Run the particles model
+  endif
 
 end subroutine step_MOM_thermo
 
@@ -1918,6 +1927,8 @@ subroutine initialize_MOM(Time, Time_init, param_file, dirs, CS, restart_CSp, &
                     fail_if_missing=.true.)
   endif
 
+  call get_param(param_file, "MOM", "USE_PARTICLES", CS%use_particles, &
+                 "If true, use the particles package.", default=.false.)
 
   CS%ensemble_ocean=.false.
   call get_param(param_file, "MOM", "ENSEMBLE_OCEAN", CS%ensemble_ocean, &
@@ -2458,6 +2469,10 @@ subroutine initialize_MOM(Time, Time_init, param_file, dirs, CS, restart_CSp, &
   !### This could perhaps go here instead of in finish_MOM_initialization?
   ! call fix_restart_scaling(GV)
   ! call fix_restart_unit_scaling(US)
+
+  if (CS%use_particles) then
+    call particles_init(CS%particles, G, CS%Time, CS%dt_therm, CS%u, CS%v)
+  endif
 
   call callTree_leave("initialize_MOM()")
   call cpu_clock_end(id_clock_init)
@@ -3092,6 +3107,10 @@ end subroutine get_ocean_stocks
 !> End of ocean model, including memory deallocation
 subroutine MOM_end(CS)
   type(MOM_control_struct), pointer :: CS   !< MOM control structure
+
+  if (CS%use_particles) then
+    call particles_save_restart(CS%particles)
+  endif
 
   if (CS%use_ALE_algorithm) call ALE_end(CS%ALE_CSp)
 
